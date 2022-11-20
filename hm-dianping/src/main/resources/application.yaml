@@ -5,7 +5,8 @@ spring:
     name: hmdp
   datasource:
     driver-class-name: com.mysql.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC
+    #&allowPublicKeyRetrieval=true 解决jdbc4.MySQLNonTransientConnectionException: Public Key Retrieval is not allowed
+    url: jdbc:mysql://127.0.0.1:3306/hmdp?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
     username: root
     password: 123456
   redis:
