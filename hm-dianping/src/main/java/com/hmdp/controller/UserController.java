@@ -17,11 +17,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
 
 /**
- * <p>
- * 前端控制器
- * </p>
  *
- * @author 虎哥
  */
 @Slf4j
 @RestController
@@ -35,21 +31,18 @@ public class UserController {
     private IUserInfoService userInfoService;
 
     /**
-     * 发送手机验证码
+     * 获取手机号,生成验证码,保存验证码,发送验证码(由session实现已经修改为redis实现)
      */
     @PostMapping("code")
     public Result sendCode(@RequestParam("phone") String phone, HttpSession session) {
-        // 发送短信验证码并保存验证码
         return userService.sendCode(phone, session);
     }
 
     /**
-     * 登录功能
-     * @param loginForm 登录参数，包含手机号、验证码；或者手机号、密码
+     * 登录功能,验证手机号和验证码
      */
     @PostMapping("/login")
     public Result login(@RequestBody LoginFormDTO loginForm, HttpSession session){
-        // 实现登录功能
         return userService.login(loginForm, session);
     }
 
