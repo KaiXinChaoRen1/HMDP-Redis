@@ -5,6 +5,10 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+/**
+ * 登录拦截器(实现接口,重写方法)
+ * 还需要配置让拦截器生效
+ */
 public class LoginInterceptor implements HandlerInterceptor {
 
     @Override
