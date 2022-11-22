@@ -12,11 +12,7 @@ import javax.annotation.Resource;
 import java.util.List;
 
 /**
- * <p>
- * 前端控制器
- * </p>
- *
- * @author 虎哥
+ * 商铺类型Controller,尚未加入redis缓存,不用看了,是人家的课后作业
  */
 @RestController
 @RequestMapping("/shop-type")

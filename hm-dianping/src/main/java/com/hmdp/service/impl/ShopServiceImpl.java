@@ -63,6 +63,14 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
+    /**
+     *  更新数据库同时删除缓存
+     *      要保证这两个操作的的事务性,所以要加事务注解
+     *  先更新数据库还是先删除缓存?
+     *      无论先动哪个,都有可能在偶然的情况下被多线程的cpu切换给见缝插针破坏数据一致性
+     *      但是先删除缓存的话,由于更更新数据库操作耗时稍多,此时另一个线程读到错误的数据,并写入缓存的可能性更大
+     *      因此,先更新数据库.
+     */
     @Override
     @Transactional
     public Result update(Shop shop) {
