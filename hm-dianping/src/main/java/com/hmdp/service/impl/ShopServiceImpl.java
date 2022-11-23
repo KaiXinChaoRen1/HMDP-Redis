@@ -26,7 +26,7 @@ import static com.hmdp.utils.RedisConstants.*;
 
 /**
  * <p>
- *  服务实现类
+ * 服务实现类
  * </p>
  *
  * @author 虎哥
@@ -44,17 +44,19 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Result queryById(Long id) {
-        // 解决缓存穿透
-        Shop shop = cacheClient
-                .queryWithPassThrough(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        // 解决缓存穿透(坏人访问不存在的id直接访问到数据库)
+//        Shop shop = cacheClient
+//                .queryWithPassThrough(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
-        // 互斥锁解决缓存击穿
-        // Shop shop = cacheClient
-        //         .queryWithMutex(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
+        //缓存击穿(热点key过期,并且缓存重建时间长,期间大量访问直接访问数据库)
+        //1.加锁,解决缓存击穿
+         Shop shop = cacheClient
+                 .queryWithMutex(CACHE_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, TimeUnit.MINUTES);
 
-        // 逻辑过期解决缓存击穿
-        // Shop shop = cacheClient
-        //         .queryWithLogicalExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById, 20L, TimeUnit.SECONDS);
+        // 2.逻辑过期,解决缓存击穿
+//        Shop shop = cacheClient
+//                .queryWithLogicalExpire(CACHE_SHOP_KEY, id, Shop.class, this::getById, 20L, TimeUnit.SECONDS);
+
 
         if (shop == null) {
             return Result.fail("店铺不存在！");
@@ -64,12 +66,12 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     }
 
     /**
-     *  更新数据库同时删除缓存
-     *      要保证这两个操作的的事务性,所以要加事务注解
-     *  先更新数据库还是先删除缓存?
-     *      无论先动哪个,都有可能在偶然的情况下被多线程的cpu切换给见缝插针破坏数据一致性
-     *      但是先删除缓存的话,由于更更新数据库操作耗时稍多,此时另一个线程读到错误的数据,并写入缓存的可能性更大
-     *      因此,先更新数据库.
+     * 更新数据库同时删除缓存
+     * 要保证这两个操作的的事务性,所以要加事务注解
+     * 先更新数据库还是先删除缓存?
+     * 无论先动哪个,都有可能在偶然的情况下被多线程的cpu切换给见缝插针破坏数据一致性
+     * 但是先删除缓存的话,由于更更新数据库操作耗时稍多,此时另一个线程读到错误的数据,并写入缓存的可能性更大
+     * 因此,先更新数据库.
      */
     @Override
     @Transactional
