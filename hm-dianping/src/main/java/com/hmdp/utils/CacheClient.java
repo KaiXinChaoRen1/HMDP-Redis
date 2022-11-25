@@ -17,27 +17,45 @@ import java.util.function.Function;
 import static com.hmdp.utils.RedisConstants.CACHE_NULL_TTL;
 import static com.hmdp.utils.RedisConstants.LOCK_SHOP_KEY;
 
+/**
+ * 封装，获取缓存和新建缓存，序列化与反序列化的工具类
+ */
 @Slf4j
 @Component
 public class CacheClient {
 
     private final StringRedisTemplate stringRedisTemplate;
 
+    //线程池，缓存击穿用到的
     private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
+    //基于构造函数注入
     public CacheClient(StringRedisTemplate stringRedisTemplate) {
         this.stringRedisTemplate = stringRedisTemplate;
     }
 
+    /**
+     * 普通的新建缓存，接收任意对象序列为String存储到Redis，并增加TTL过期时间
+     *
+     * @param key
+     * @param value
+     * @param time  时间
+     * @param unit  时间单位
+     */
     public void set(String key, Object value, Long time, TimeUnit unit) {
         stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(value), time, unit);
     }
 
     /**
-     * 添加带逻辑时间的缓存
+     * 新建防止缓存击穿的缓存，接收任意对象序列为String存储到Redis，并增加逻辑过期时间
+     *
+     * @param key
+     * @param value
+     * @param time  时间
+     * @param unit  时间单位
      */
     public void setWithLogicalExpire(String key, Object value, Long time, TimeUnit unit) {
-        // 设置逻辑过期
+        // 封装拥有逻辑过期时间的对象（到了这个时候就算是过期）
         RedisData redisData = new RedisData();
         redisData.setData(value);
         redisData.setExpireTime(LocalDateTime.now().plusSeconds(unit.toSeconds(time)));
@@ -46,13 +64,17 @@ public class CacheClient {
     }
 
     /**
-     *  缓存穿透,是指坏人故意使用不存在的id多次访问数据库,
-     *      可以使用缓存""
-     *      和布隆过滤器解决(redis内部有布隆过滤器的实现)
-     *      本次是缓存""的方式实现
+     * 缓存穿透,是指坏人故意使用不存在的id多次访问数据库,
+     * 可以使用缓存""
+     * 和布隆过滤器解决(redis内部有布隆过滤器的实现)
+     * 本次是缓存""的方式实现
      */
-    public <R,ID> R queryWithPassThrough(
-            String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit){
+    public <R, ID> R queryWithPassThrough(String keyPrefix,           //Redis查询前缀
+                                          ID id,                      //泛型ID
+                                          Class<R> type,              //泛型类
+                                          Function<ID, R> dbFallback, //泛型类查询数据库的方法（有参有返回值的Function）（fallback：后路；后备计划）
+                                          Long time,                  //过期时间
+                                          TimeUnit unit) {             //时间单位
         //构建key
         String key = keyPrefix + id;
         // 1.从redis查询商铺缓存
@@ -68,7 +90,7 @@ public class CacheClient {
             return null;
         }
 
-        // 4.不存在，根据id查询数据库
+        // 4.不存在，根据id查询数据库（由于工具类时通用方法，具体根据id查询数据库的方法，工具类内部不知道，所以需要作为参数传入）
         R r = dbFallback.apply(id);
         // 5.不存在，返回错误
         if (r == null) {
@@ -83,12 +105,16 @@ public class CacheClient {
     }
 
     /**
-     *  设置逻辑过期时间,发现逻辑过期之后,不直接删除缓存,而是开启另一个线程去重建缓存,期间还可以访问到未删除的缓存
-     *      key本身不设置过期时间,由热点事件过去之后手动删除
-     *      通过代码增加逻辑过期时间(封装RedisData类型,内保存过期时间)
+     * 设置逻辑过期时间,发现逻辑过期之后,不直接删除缓存,而是开启另一个线程去重建缓存,期间还可以访问到未删除的缓存
+     * key本身不设置过期时间,由热点事件过去之后手动删除
+     * 通过代码增加逻辑过期时间(封装RedisData类型,内保存过期时间)
      */
-    public <R, ID> R queryWithLogicalExpire(
-            String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
+    public <R, ID> R queryWithLogicalExpire(String keyPrefix,
+                                            ID id,
+                                            Class<R> type,
+                                            Function<ID, R> dbFallback,
+                                            Long time,
+                                            TimeUnit unit) {
         String key = keyPrefix + id;
         // 1.从redis查询商铺缓存
         String json = stringRedisTemplate.opsForValue().get(key);
@@ -102,7 +128,7 @@ public class CacheClient {
         R r = JSONUtil.toBean((JSONObject) redisData.getData(), type);
         LocalDateTime expireTime = redisData.getExpireTime();
         // 5.判断是否过期
-        if(expireTime.isAfter(LocalDateTime.now())) {
+        if (expireTime.isAfter(LocalDateTime.now())) {
             // 5.1.未过期，直接返回店铺信息
             return r;
         }
@@ -112,7 +138,7 @@ public class CacheClient {
         String lockKey = LOCK_SHOP_KEY + id;
         boolean isLock = tryLock(lockKey);
         // 6.2.判断是否获取锁成功
-        if (isLock){
+        if (isLock) {
             // 6.3.成功，开启独立线程，实现缓存重建
             CACHE_REBUILD_EXECUTOR.submit(() -> {
                 try {
@@ -122,7 +148,7 @@ public class CacheClient {
                     this.setWithLogicalExpire(key, newR, time, unit);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
-                }finally {
+                } finally {
                     // 释放锁
                     unlock(lockKey);
                 }
@@ -135,8 +161,12 @@ public class CacheClient {
     /**
      * 加互斥锁,解决缓存击穿,会导致大量线程阻塞
      */
-    public <R, ID> R queryWithMutex(
-            String keyPrefix, ID id, Class<R> type, Function<ID, R> dbFallback, Long time, TimeUnit unit) {
+    public <R, ID> R queryWithMutex(String keyPrefix,
+                                    ID id,
+                                    Class<R> type,
+                                    Function<ID, R> dbFallback,
+                                    Long time,
+                                    TimeUnit unit) {
         String key = keyPrefix + id;
         // 1.从redis查询商铺缓存
         String shopJson = stringRedisTemplate.opsForValue().get(key);
@@ -176,7 +206,7 @@ public class CacheClient {
             this.set(key, r, time, unit);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
-        }finally {
+        } finally {
             // 7.释放锁
             unlock(lockKey);
         }
