@@ -60,6 +60,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
 
+
+//    @Override         //事务失效,直接使用代理类的方式需要再接口中写方法,而在这里实现类里需要实现
+//    public Result createVoucherOrder(Long voucherId) {
+//        return null;
+//    }
+
     @PostConstruct
     private void init() {
         //提交任务
@@ -208,6 +214,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(orderId);
     }
 
+
+
     /*@Override
     public Result seckillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
@@ -238,31 +246,8 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 3.返回订单id
         return Result.ok(orderId);
     }*/
-    /*@Override
-    public Result seckillVoucher(Long voucherId) {
-        // 1.查询优惠券
-        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-        // 2.判断秒杀是否开始
-        if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
-            // 尚未开始
-            return Result.fail("秒杀尚未开始！");
-        }
-        // 3.判断秒杀是否已经结束
-        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
-            // 尚未开始
-            return Result.fail("秒杀已经结束！");
-        }
-        // 4.判断库存是否充足
-        if (voucher.getStock() < 1) {
-            // 库存不足
-            return Result.fail("库存不足！");
-        }
 
-        return createVoucherOrder(voucherId);
-    }
-
-
-
+    /*
     @Transactional
     public Result createVoucherOrder(Long voucherId) {
         // 5.一人一单
@@ -370,43 +355,66 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
     }*/
 
-    /*@Transactional
-    public Result createVoucherOrder(Long voucherId) {
-        // 5.一人一单
-        Long userId = UserHolder.getUser().getId();
 
-        synchronized (userId.toString().intern()) {
-            // 5.1.查询订单
-            int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
-            // 5.2.判断是否存在
-            if (count > 0) {
-                // 用户已经购买过了
-                return Result.fail("用户已经购买过一次！");
-            }
+//    //**************************************************************2.下单操作(单机情况下)
+//    @Transactional
+//    public Result createVoucherOrder(Long voucherId) {
+//        // 5.实现一人一单,(如果用同步方法,则所有人串行执行,效率太低,我们只需要让单个用户不重复购买就行了,因此锁对象用用户id)
+//        Long userId = UserHolder.getUser().getId();
+//        //synchronized (userId.toString().intern()) {       //intern(),从常量值中取这个值,没有的话,加入常量池中(锁加在这里,会导致先释放锁,在提交事务,只能把锁加到调用这个方法的地方,才能保证先提交事务,再释放锁)
+//        // 5.1.查询订单
+//        int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+//        if (count > 0) {
+//            return Result.fail("用户已经购买过一次！");
+//        }
+//        // 6.扣减库存(乐观锁实现,在更新时判断是否变化,由于业务关系,只需要判断库存是否>0即可)
+//        boolean success = seckillVoucherService.update()
+//                .setSql("stock = stock - 1")                                         // set stock = stock - 1
+//                .eq("voucher_id", voucherId).gt("stock", 0)       // where id = ? and stock > 0
+//                .update();
+//        if (!success) {
+//            return Result.fail("库存不足！");
+//        }
+//
+//        // 7.创建订单
+//        VoucherOrder voucherOrder = new VoucherOrder();
+//        // 7.1.订单id
+//        long orderId = redisIdWorker.nextId("order");
+//        voucherOrder.setId(orderId);
+//        voucherOrder.setUserId(userId);
+//        voucherOrder.setVoucherId(voucherId);
+//        save(voucherOrder);
+//
+//        // 7.返回订单id
+//        return Result.ok(orderId);
+//        //}
+//    }
+//
+//    //*********************************************************1.秒杀代金券,并且实现一人一单(单机情况下)
+//    @Override
+//    public Result seckillVoucher(Long voucherId) {
+//        // 1.查询优惠券
+//        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
+//        // 2.判断秒杀是否开始
+//        if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
+//            return Result.fail("秒杀尚未开始！");
+//        }
+//        // 3.判断秒杀是否已经结束
+//        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
+//            return Result.fail("秒杀已经结束！");
+//        }
+//        // 4.判断库存是否充足
+//        if (voucher.getStock() < 1) {
+//            return Result.fail("库存不足！");
+//        }
+//        //下单功能(再这里加锁能保证先提交事务再释放锁)
+//        Long userId = UserHolder.getUser().getId();
+//        synchronized (userId.toString().intern()) {
+//            //可以这样解决,添加依赖,启动类添加注解,然后直接获取代理对象
+//            IVoucherOrderService proxy = (IVoucherOrderService)AopContext.currentProxy();
+//            return proxy.createVoucherOrder(voucherId);       //这个方法加了事务,而这里调用的者this,也就是VoucherOrderServiceImpl,而不是其代理类,要知道Spring的事务是通过代理实现的,所以直接这样调用会出现事务失效的问题
+//        }
+//    }
 
-            // 6.扣减库存
-            boolean success = seckillVoucherService.update()
-                    .setSql("stock = stock - 1") // set stock = stock - 1
-                    .eq("voucher_id", voucherId).gt("stock", 0) // where id = ? and stock > 0
-                    .update();
-            if (!success) {
-                // 扣减失败
-                return Result.fail("库存不足！");
-            }
 
-            // 7.创建订单
-            VoucherOrder voucherOrder = new VoucherOrder();
-            // 7.1.订单id
-            long orderId = redisIdWorker.nextId("order");
-            voucherOrder.setId(orderId);
-            // 7.2.用户id
-            voucherOrder.setUserId(userId);
-            // 7.3.代金券id
-            voucherOrder.setVoucherId(voucherId);
-            save(voucherOrder);
-
-            // 7.返回订单id
-            return Result.ok(orderId);
-        }
-    }*/
 }
