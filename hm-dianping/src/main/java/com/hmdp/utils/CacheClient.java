@@ -214,12 +214,13 @@ public class CacheClient {
         return r;
     }
 
+    //获取锁（要保证设置kv和过期时间是一个原子操作set）
     private boolean tryLock(String key) {
         //setIfAbsent 如果为空就set值,对应redis的setnx的命令
         Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
         return BooleanUtil.isTrue(flag);
     }
-
+    //释放锁
     private void unlock(String key) {
         stringRedisTemplate.delete(key);
     }
