@@ -28,12 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * <p>
- * 服务实现类
- * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
+ * 秒杀业务
  */
 @Slf4j
 @Service
@@ -48,7 +43,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedissonClient redissonClient;
 
-    //lua脚本********************************************************
+    //lua脚本（秒杀）********************************************************
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
     static {
@@ -61,14 +56,14 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
 
 
-//    @Override         //事务失效,直接使用代理类的方式需要再接口中写方法,而在这里实现类里需要实现
+//    @Override         //事务失效,直接获取代理类的解决方式需要在接口中写方法,而在这里实现类里需要实现
 //    public Result createVoucherOrder(Long voucherId) {
 //        return null;
 //    }
 
+    //Spring启动时处理阻塞队列里的任务
     @PostConstruct
     private void init() {
-        //提交任务
 //        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
     }
 
@@ -133,67 +128,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
-    /*private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
-    private class VoucherOrderHandler implements Runnable{
-
-        @Override
-        public void run() {
-            while (true){
-                try {
-                    // 1.获取队列中的订单信息
-                    VoucherOrder voucherOrder = orderTasks.take();
-                    // 2.创建订单
-                    createVoucherOrder(voucherOrder);
-                } catch (Exception e) {
-                    log.error("处理订单异常", e);
-                }
-            }
-        }
-    }*/
-
-    private void createVoucherOrder(VoucherOrder voucherOrder) {
-        Long userId = voucherOrder.getUserId();
-        Long voucherId = voucherOrder.getVoucherId();
-        // 创建锁对象
-        RLock redisLock = redissonClient.getLock("lock:order:" + userId);
-        // 尝试获取锁
-        boolean isLock = redisLock.tryLock();
-        // 判断
-        if (!isLock) {
-            // 获取锁失败，直接返回失败或者重试
-            log.error("不允许重复下单！");
-            return;
-        }
-
-        try {
-            // 5.1.查询订单
-            int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
-            // 5.2.判断是否存在
-            if (count > 0) {
-                // 用户已经购买过了
-                log.error("不允许重复下单！");
-                return;
-            }
-
-            // 6.扣减库存
-            boolean success = seckillVoucherService.update()
-                    .setSql("stock = stock - 1") // set stock = stock - 1
-                    .eq("voucher_id", voucherId).gt("stock", 0) // where id = ? and stock > 0
-                    .update();
-            if (!success) {
-                // 扣减失败
-                log.error("库存不足！");
-                return;
-            }
-
-            // 7.创建订单
-            save(voucherOrder);
-        } finally {
-            // 释放锁
-            redisLock.unlock();
-        }
-    }
-
     @Override
     public Result seckillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
@@ -214,40 +148,104 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         return Result.ok(orderId);
     }
 
+    //****************************************************************5.3.创建订单
+    private void createVoucherOrder(VoucherOrder voucherOrder) {
+        //因为是子线程，userId只能去voucherOrder里取
+        Long userId = voucherOrder.getUserId();
+        Long voucherId = voucherOrder.getVoucherId();
+        // 加锁（前边redis已经做过判断，这里兜底一下）
+        RLock redisLock = redissonClient.getLock("lock:order:" + userId);
+        boolean isLock = redisLock.tryLock();
+        if (!isLock) {
+            log.error("不允许重复下单！");  //异步处理已经没有前端了，打印一下日志即可
+            return;
+        }
+        try {
+            // 5.1.查询订单
+            int count = query().eq("user_id", userId).eq("voucher_id", voucherId).count();
+            if (count > 0) {
+                log.error("不允许重复下单！");
+                return;
+            }
+            // 6.扣减库存
+            boolean success = seckillVoucherService.update()
+                    .setSql("stock = stock - 1") // set stock = stock - 1
+                    .eq("voucher_id", voucherId).gt("stock", 0) // where id = ? and stock > 0
+                    .update();
+            if (!success) {
+                log.error("库存不足！");
+                return;
+            }
+            // 7.创建订单
+            save(voucherOrder);
+        } finally {
+            redisLock.unlock();
+        }
+    }
 
+
+//    //**********************************************************5.2.阻塞队列，异步执行阻塞队列里的任务
+//    //*********************************************************** 坑！？：1.阻塞队列大小受内存限制2.服务宕机数据丢失3.取出任务后出现错误，任务丢失
+//    //1.阻塞队列（获取不到会阻塞）
+//    private BlockingQueue<VoucherOrder> orderTasks = new ArrayBlockingQueue<>(1024 * 1024);
+//    //2.线程池
+//    private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
+//    //3.线程任务
+//    private class VoucherOrderHandler implements Runnable{
+//        @Override
+//        public void run() {
+//            while (true){
+//                try {
+//                    // 1.获取队列中的订单信息（获取不到会阻塞）
+//                    VoucherOrder voucherOrder = orderTasks.take();
+//                    // 2.创建订单
+//                    createVoucherOrder(voucherOrder);
+//                } catch (Exception e) {
+//                    log.error("处理订单异常", e);
+//                }
+//            }
+//        }
+//    }
+//    //4.Spring启动时处理阻塞队列里的任务
+//    @PostConstruct
+//    private void init() {
+//        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
+//    }
+//    //***************************************************************************************
+
+
+
+
+//    //************************************************************************5.1.秒杀优化，异步执行
 //    @Override
 //    public Result seckillVoucher(Long voucherId) {
 //        Long userId = UserHolder.getUser().getId();
 //        // 1.执行lua脚本
 //        Long result = stringRedisTemplate.execute(
-//                SECKILL_SCRIPT,
-//                Collections.emptyList(),
-//                voucherId.toString(), userId.toString()
+//                SECKILL_SCRIPT,                             //脚本
+//                Collections.emptyList(),                    //key
+//                voucherId.toString(), userId.toString()     //args
 //        );
 //        int r = result.intValue();
-//        // 2.判断结果是否为0
+//        // 2.判断结果
 //        if (r != 0) {
 //            // 2.1.不为0 ，代表没有购买资格
 //            return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
 //        }
-//        // 2.2.为0 ，有购买资格，把下单信息保存到阻塞队列
+//        // 2.2.为0 ，有购买资格，创建订单，把下单信息保存到阻塞队列
 //        VoucherOrder voucherOrder = new VoucherOrder();
-//        // 2.3.订单id
 //        long orderId = redisIdWorker.nextId("order");
 //        voucherOrder.setId(orderId);
-//        // 2.4.用户id
 //        voucherOrder.setUserId(userId);
-//        // 2.5.代金券id
 //        voucherOrder.setVoucherId(voucherId);
-//        // 2.6.放入阻塞队列
+//        // 2.3.放入阻塞队列
 //        orderTasks.add(voucherOrder);
-//
-//        // 3.返回订单id
+//        // 3.阻塞队列里慢慢的异步执行，这里可以直接返回订单id
 //        return Result.ok(orderId);
 //    }
 
 
-//    //***************************************************************************4.使用redisson实现是分布式锁,
+//    //*********************************************************************4.使用redisson实现是分布式锁,
 //    @Transactional
 //    public Result createVoucherOrder(Long voucherId) {
 //        // 5.一人一单
@@ -288,7 +286,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 //    }
 
 
-//    //************************************************************3.redis实现手写分布式锁,实现下单操作
+//    //****************************************************************3.redis实现手写分布式锁,实现下单操作
 //    @Transactional
 //    public Result createVoucherOrder(Long voucherId) {
 //        Long userId = UserHolder.getUser().getId();
@@ -332,7 +330,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 //    }
 
 
-//    //**************************************************************2.下单操作(单机情况下)
+//    //**************************************************************************2.下单操作(单机情况下)
 //    @Transactional
 //    public Result createVoucherOrder(Long voucherId) {
 //        // 5.实现一人一单,(如果用同步方法,则所有人串行执行,效率太低,我们只需要让单个用户不重复购买就行了,因此锁对象用用户id)
@@ -366,28 +364,29 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 //        //}
 //    }
 //
-//    //*********************************************************1.秒杀代金券,并且实现一人一单(单机情况下)
+
+
+//    //***************************************************************************1.秒杀代金券,并且实现一人一单(单机情况下)
 //    @Override
 //    public Result seckillVoucher(Long voucherId) {
 //        // 1.查询优惠券
 //        SeckillVoucher voucher = seckillVoucherService.getById(voucherId);
-//        // 2.判断秒杀是否开始
+//        // 2.判断秒杀活动时间
 //        if (voucher.getBeginTime().isAfter(LocalDateTime.now())) {
 //            return Result.fail("秒杀尚未开始！");
 //        }
-//        // 3.判断秒杀是否已经结束
 //        if (voucher.getEndTime().isBefore(LocalDateTime.now())) {
 //            return Result.fail("秒杀已经结束！");
 //        }
-//        // 4.判断库存是否充足
+//        // 3.判断库存
 //        if (voucher.getStock() < 1) {
 //            return Result.fail("库存不足！");
 //        }
-//        //下单功能(再这里加锁能保证先提交事务再释放锁)
+//        //4.下单功能(再这里加锁能保证先提交事务再释放锁)
 //        Long userId = UserHolder.getUser().getId();
 //        synchronized (userId.toString().intern()) {
 //            //可以这样解决,添加依赖,启动类添加注解,然后直接获取代理对象
-//            IVoucherOrderService proxy = (IVoucherOrderService)AopContext.currentProxy();
+//            IVoucherOrderService proxy = (IVoucherOrderService) AopContext.currentProxy();
 //            return proxy.createVoucherOrder(voucherId);       //这个方法加了事务,而这里调用的者this,也就是VoucherOrderServiceImpl,而不是其代理类,要知道Spring的事务是通过代理实现的,所以直接这样调用会出现事务失效的问题
 //        }
 //    }
