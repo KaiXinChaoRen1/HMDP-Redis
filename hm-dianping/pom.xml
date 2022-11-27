@@ -41,11 +41,6 @@
             <version>2.6.2</version>
         </dependency>
 
-        <dependency>
-            <groupId>io.lettuce</groupId>
-            <artifactId>lettuce-core</artifactId>
-            <version>6.1.6.RELEASE</version>
-        </dependency>
         <!--redis连接池-->
         <dependency>
             <groupId>org.apache.commons</groupId>
@@ -56,6 +51,12 @@
             <groupId>org.redisson</groupId>
             <artifactId>redisson</artifactId>
             <version>3.13.6</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>6.1.6.RELEASE</version>
         </dependency>
 
         <dependency>
