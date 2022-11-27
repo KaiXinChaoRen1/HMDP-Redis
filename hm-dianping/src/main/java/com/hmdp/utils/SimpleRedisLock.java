@@ -28,7 +28,7 @@ public class SimpleRedisLock implements ILock {
 
 
     /**
-     * lua脚本
+     * 操作lua脚本的实现类，提前定义好，因为如果等每次释放再读取产生io操作效率低
      */
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
 
@@ -69,14 +69,19 @@ public class SimpleRedisLock implements ILock {
 
     /**
      * 释放锁2.0，利用lua脚本原子的执行redis操作
+     *      还有坑！？(非必须,根据业务扩展)
+     *          不可重入
+     *          不可重试
+     *          超时释放
+     *          主(写)从(读)一致问题
      */
     @Override
     public void unlock() {
         // 调用lua脚本
         stringRedisTemplate.execute(
-                UNLOCK_SCRIPT,
-                Collections.singletonList(KEY_PREFIX + name),
-                ID_PREFIX + Thread.currentThread().getId());
+                UNLOCK_SCRIPT,                                          //script
+                Collections.singletonList(KEY_PREFIX + name),           //keys
+                ID_PREFIX + Thread.currentThread().getId());      //args
     }
 
 }
