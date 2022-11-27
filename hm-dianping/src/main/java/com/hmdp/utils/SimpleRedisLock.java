@@ -74,6 +74,7 @@ public class SimpleRedisLock implements ILock {
      *          不可重试
      *          超时释放
      *          主(写)从(读)一致问题
+     *                  使用Redisson解决
      */
     @Override
     public void unlock() {
