@@ -9,10 +9,12 @@ import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
+import io.lettuce.core.RedisBusyException;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.redis.RedisSystemException;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -43,6 +45,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedissonClient redissonClient;
 
+//    @Override         //事务失效问题,直接获取代理类的解决方式需要在接口中写方法,而在这里实现类里需要实现
+//    public Result createVoucherOrder(Long voucherId) {
+//        return null;
+//    }
+
     //lua脚本（秒杀）********************************************************
     private static final DefaultRedisScript<Long> SECKILL_SCRIPT;
 
@@ -53,27 +60,45 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     }
     //****************************************************************
 
+    //线程池
     private static final ExecutorService SECKILL_ORDER_EXECUTOR = Executors.newSingleThreadExecutor();
-
-
-//    @Override         //事务失效,直接获取代理类的解决方式需要在接口中写方法,而在这里实现类里需要实现
-//    public Result createVoucherOrder(Long voucherId) {
-//        return null;
-//    }
-
-    //Spring启动时处理阻塞队列里的任务
+    //Spring启动时使用线程处理阻塞队列里的任务
     @PostConstruct
     private void init() {
-//        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
+        //启动时创建消息队列，要不然也得手动创建
+        DefaultRedisScript<Object> addMQScript = new DefaultRedisScript<>("redis.call('xgroup', 'create','stream.orders', 'g1', '0', 'mkstream')");
+        SECKILL_SCRIPT.setResultType(Long.class);
+        try {
+            stringRedisTemplate.execute(addMQScript,Collections.emptyList(),"");
+        }catch (RedisBusyException | RedisSystemException e) {
+            log.info("消息队列已经创建了");
+        }
+        //提交线程任务执行
+        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
     }
+//    @PreDestroy
+//    private void preDestroy() {
+//        //关闭时删除，否则下次启动上面代码会报错，其实捕获就行了，淦
+//        DefaultRedisScript<Object> addMQScript = new DefaultRedisScript<>("redis.call('xgroup', 'destroy','stream.orders', 'g1')");
+//        stringRedisTemplate.execute(addMQScript,Collections.emptyList(),"");
+//    }
 
+    /**
+     * Redis实现消息队列
+     * 1.List模拟消息队列。（大垃）缺点：1.同一个消息只能被一个消费者拿到 2.拿到消息后如果丢失就再也无了
+     * 2.PubSub发布订阅。（特垃）优点：1.支持多生产者多消费者  缺点：1.数据不能持久化，没人接收就直接无了2.消息丢失3.消息堆积有上限
+     * 3.Streams。
+     * 1.单消费模式（小垃） 优点：1.消息会保存2.多消费者3.可以阻塞读取。缺点，1.读最新的话可能会漏读
+     * 2.消费者组 （牛） 优点：1.可以维护一个标识，记录最后一个被处理的消息，解决漏读 2.消息确认机制3.持久化4.阻塞5.出现错误可以回溯
+     */
+    //******************************************************************7.其他线程处理消息
     private class VoucherOrderHandler implements Runnable {
-
         @Override
         public void run() {
             while (true) {
                 try {
                     // 1.获取消息队列中的订单信息 XREADGROUP GROUP g1 c1 COUNT 1 BLOCK 2000 STREAMS s1 >
+                    //opsForStream()    玩Stream
                     List<MapRecord<String, Object, Object>> list = stringRedisTemplate.opsForStream().read(
                             Consumer.from("g1", "c1"),
                             StreamReadOptions.empty().count(1).block(Duration.ofSeconds(2)),
@@ -98,7 +123,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
                 }
             }
         }
-
+        //*****************************************************************************8.出现错误处理PendingList
         private void handlePendingList() {
             while (true) {
                 try {
@@ -128,27 +153,25 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         }
     }
 
+    //*******************************************************************6.异步秒杀的前半部分（最终版），到返回给前端信息，后续的操作由其他线程读取消息队列慢慢做
     @Override
     public Result seckillVoucher(Long voucherId) {
         Long userId = UserHolder.getUser().getId();
         long orderId = redisIdWorker.nextId("order");
-        // 1.执行lua脚本
+        // 1.执行lua脚本，判断资格，扣减库存并将消息并加入消息队列
         Long result = stringRedisTemplate.execute(
                 SECKILL_SCRIPT,
                 Collections.emptyList(),
                 voucherId.toString(), userId.toString(), String.valueOf(orderId)
         );
         int r = result.intValue();
-        // 2.判断结果是否为0
         if (r != 0) {
-            // 2.1.不为0 ，代表没有购买资格
             return Result.fail(r == 1 ? "库存不足" : "不能重复下单");
         }
-        // 3.返回订单id
         return Result.ok(orderId);
     }
 
-    //****************************************************************5.3.创建订单
+    //****************************************************************5.3.创建订单功能（最终版）
     private void createVoucherOrder(VoucherOrder voucherOrder) {
         //因为是子线程，userId只能去voucherOrder里取
         Long userId = voucherOrder.getUserId();
@@ -212,8 +235,6 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 //        SECKILL_ORDER_EXECUTOR.submit(new VoucherOrderHandler());
 //    }
 //    //***************************************************************************************
-
-
 
 
 //    //************************************************************************5.1.秒杀优化，异步执行
