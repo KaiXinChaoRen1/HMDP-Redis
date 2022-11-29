@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.annotation.Resource;
 
 /**
- * 秒杀代金券
+ * 秒杀代金券，重中之重
  */
 @RestController
 @RequestMapping("/voucher-order")

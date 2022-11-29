@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 
 /**
- * 商铺信息Controller
+ * 商铺信息Controller，这里主要学缓存
  */
 @RestController
 @RequestMapping("/shop")

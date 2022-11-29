@@ -100,20 +100,19 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         Long userId = UserHolder.getUser().getId();
         // 2.判断当前登录用户是否已经点赞
         String key = BLOG_LIKED_KEY + id;
+        //zset中用获取分数，代替判断是否存在
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
         if (score == null) {
-            // 3.如果未点赞，可以点赞
-            // 3.1.数据库点赞数 + 1
+            // 如果未点赞，可以点赞数据库点赞数 + 1
             boolean isSuccess = update().setSql("liked = liked + 1").eq("id", id).update();
-            // 3.2.保存用户到Redis的set集合  zadd key value score
+            // 保存用户到Redis的set集合  语法：zadd  key  value  score
             if (isSuccess) {
                 stringRedisTemplate.opsForZSet().add(key, userId.toString(), System.currentTimeMillis());
             }
         } else {
-            // 4.如果已点赞，取消点赞
-            // 4.1.数据库点赞数 -1
+            // 如果已点赞，则取消，数据库点赞数 -1
             boolean isSuccess = update().setSql("liked = liked - 1").eq("id", id).update();
-            // 4.2.把用户从Redis的set集合移除
+            // 把用户从Redis的set集合移除
             if (isSuccess) {
                 stringRedisTemplate.opsForZSet().remove(key, userId.toString());
             }
@@ -124,15 +123,16 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
     @Override
     public Result queryBlogLikes(Long id) {
         String key = BLOG_LIKED_KEY + id;
-        // 1.查询top5的点赞用户 zrange key 0 4
+        // 1.查询top5的点赞用户 redis语法-->  zrange  key  0  4
         Set<String> top5 = stringRedisTemplate.opsForZSet().range(key, 0, 4);
         if (top5 == null || top5.isEmpty()) {
             return Result.ok(Collections.emptyList());
         }
         // 2.解析出其中的用户id
         List<Long> ids = top5.stream().map(Long::valueOf).collect(Collectors.toList());
+        //拼接id字符串，用于拼接sql
         String idStr = StrUtil.join(",", ids);
-        // 3.根据用户id查询用户 WHERE id IN ( 5 , 1 ) ORDER BY FIELD(id, 5, 1)
+        // 3.根据用户id查询用户信息 sql--> WHERE id IN ( 5 , 1 ) ORDER BY FIELD(id, 5, 1)要加一个排序，要不然不是我们想要的顺序
         List<UserDTO> userDTOS = userService.query()
                 .in("id", ids).last("ORDER BY FIELD(id," + idStr + ")").list()
                 .stream()
@@ -149,7 +149,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         blog.setUserId(user.getId());
         // 2.保存探店笔记
         boolean isSuccess = save(blog);
-        if(!isSuccess){
+        if (!isSuccess) {
             return Result.fail("新增笔记失败!");
         }
         // 3.查询笔记作者的所有粉丝 select * from tb_follow where follow_user_id = ?
@@ -187,9 +187,9 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
             ids.add(Long.valueOf(tuple.getValue()));
             // 4.2.获取分数(时间戳）
             long time = tuple.getScore().longValue();
-            if(time == minTime){
+            if (time == minTime) {
                 os++;
-            }else{
+            } else {
                 minTime = time;
                 os = 1;
             }

@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.annotation.Resource;
 
 /**
- *  代金券功能
+ *  添加代金券功能，非重点
  */
 @RestController
 @RequestMapping("/voucher")

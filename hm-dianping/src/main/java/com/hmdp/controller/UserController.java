@@ -81,15 +81,16 @@ public class UserController {
         return Result.ok(info);
     }
 
+    /**
+     * 查询指定用户的详情信息，用于共同关注功能进入其他人主页时获取信息，非重点
+     */
     @GetMapping("/{id}")
     public Result queryUserById(@PathVariable("id") Long userId) {
-        // 查询详情
         User user = userService.getById(userId);
         if (user == null) {
             return Result.ok();
         }
         UserDTO userDTO = BeanUtil.copyProperties(user, UserDTO.class);
-        // 返回
         return Result.ok(userDTO);
     }
 
