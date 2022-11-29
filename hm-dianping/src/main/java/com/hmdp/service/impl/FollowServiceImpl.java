@@ -77,12 +77,14 @@ public class FollowServiceImpl extends ServiceImpl<FollowMapper, Follow> impleme
     public Result followCommons(Long id) {
         // 1.获取当前用户
         Long userId = UserHolder.getUser().getId();
+        //set1
         String key = "follows:" + userId;
-        // 2.求交集
+        //set2
         String key2 = "follows:" + id;
+        //求交集
         Set<String> intersect = stringRedisTemplate.opsForSet().intersect(key, key2);
+        //判空
         if (intersect == null || intersect.isEmpty()) {
-            // 无交集
             return Result.ok(Collections.emptyList());
         }
         // 3.解析id集合
