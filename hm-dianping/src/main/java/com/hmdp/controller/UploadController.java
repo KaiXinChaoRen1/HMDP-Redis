@@ -12,6 +12,10 @@ import java.io.File;
 import java.io.IOException;
 import java.util.UUID;
 
+/**
+ * 上传文件接口，多个不同服务会调用
+ *  非关注重点，因此文件存到nginx能让前端直接访问即可
+ */
 @Slf4j
 @RestController
 @RequestMapping("upload")
@@ -24,7 +28,7 @@ public class UploadController {
             String originalFilename = image.getOriginalFilename();
             // 生成新文件名
             String fileName = createNewFileName(originalFilename);
-            // 保存文件
+            // 保存文件（修改文件位置为自己电脑的）
             image.transferTo(new File(SystemConstants.IMAGE_UPLOAD_DIR, fileName));
             // 返回结果
             log.debug("文件上传成功，{}", fileName);
