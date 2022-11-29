@@ -68,7 +68,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Override
     public Result queryBlogById(Long id) {
-        // 1.查询blog
+        // 1.查询blog（这里就获取到点赞数量了）
         Blog blog = getById(id);
         if (blog == null) {
             return Result.fail("笔记不存在！");
@@ -96,11 +96,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
     @Override
     public Result likeBlog(Long id) {
-        // 1.获取登录用户
+        // 1.获取登录用户id
         Long userId = UserHolder.getUser().getId();
         // 2.判断当前登录用户是否已经点赞
+        //2.1 使用blogId拼接key
         String key = BLOG_LIKED_KEY + id;
-        //zset中用获取分数，代替判断是否存在
+        //2.2 zset中用获取分数，代替判断是否存在
         Double score = stringRedisTemplate.opsForZSet().score(key, userId.toString());
         if (score == null) {
             // 如果未点赞，可以点赞数据库点赞数 + 1
