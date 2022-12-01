@@ -155,7 +155,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         }
         // 3.查询笔记作者的所有粉丝 select * from tb_follow where follow_user_id = ?
         List<Follow> follows = followService.query().eq("follow_user_id", user.getId()).list();
-        // 4.推送笔记id给所有粉丝
+        // 4.推送笔记id给所有粉丝(zset实现)
         for (Follow follow : follows) {
             // 4.1.获取粉丝id
             Long userId = follow.getUserId();

@@ -24,7 +24,7 @@ public class BlogController {
     private IBlogService blogService;
 
     /**
-     * 保存博客
+     * 保存博客,同时推送给粉丝
      */
     @PostMapping
     public Result saveBlog(@RequestBody Blog blog) {
@@ -32,7 +32,16 @@ public class BlogController {
     }
 
     /**
-     * 查看
+     * 分页获取关注推送过来的blog
+     */
+    @GetMapping("/of/follow")
+    public Result queryBlogOfFollow(
+            @RequestParam("lastId") Long max, @RequestParam(value = "offset", defaultValue = "0") Integer offset) {
+        return blogService.queryBlogOfFollow(max, offset);
+    }
+
+    /**
+     * 根据blog的id查询
      */
     @GetMapping("/{id}")
     public Result queryBlogById(@PathVariable("id") Long id) {
@@ -76,12 +85,6 @@ public class BlogController {
         return Result.ok(records);
     }
 
-
-    @GetMapping("/of/follow")
-    public Result queryBlogOfFollow(
-            @RequestParam("lastId") Long max, @RequestParam(value = "offset", defaultValue = "0") Integer offset) {
-        return blogService.queryBlogOfFollow(max, offset);
-    }
 
     /**
      * 查询指定用户的所有blog，用于功能关注功能进入关注者页面显示其blog，非重点
