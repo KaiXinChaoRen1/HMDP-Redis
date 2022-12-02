@@ -32,7 +32,7 @@ public class BlogController {
     }
 
     /**
-     * 分页获取关注推送过来的blog
+     * 分页获取关注推送过来的blog(这个用的是获取一个范围里zset元素的方法,但是设计不合理随便看看就完了)
      */
     @GetMapping("/of/follow")
     public Result queryBlogOfFollow(

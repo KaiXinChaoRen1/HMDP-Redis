@@ -34,11 +34,17 @@
                 </exclusion>
             </exclusions>
         </dependency>
-
+        <!--springboot版本太老,又想用最新的命令,可以这样做,排除spring-data-redis中原有的,手动导入新的需要的依赖-->
         <dependency>
             <groupId>org.springframework.data</groupId>
             <artifactId>spring-data-redis</artifactId>
             <version>2.6.2</version>
+        </dependency>
+
+        <dependency>
+            <groupId>io.lettuce</groupId>
+            <artifactId>lettuce-core</artifactId>
+            <version>6.1.6.RELEASE</version>
         </dependency>
 
         <!--redis连接池-->
@@ -53,11 +59,7 @@
             <version>3.13.6</version>
         </dependency>
 
-        <dependency>
-            <groupId>io.lettuce</groupId>
-            <artifactId>lettuce-core</artifactId>
-            <version>6.1.6.RELEASE</version>
-        </dependency>
+
 
         <dependency>
             <groupId>org.springframework.boot</groupId>

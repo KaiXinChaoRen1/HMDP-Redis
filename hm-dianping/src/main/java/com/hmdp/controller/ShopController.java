@@ -53,11 +53,7 @@ public class ShopController {
 
 
     /**
-     * 根据商铺类型分页查询商铺信息
-     *
-     * @param typeId  商铺类型
-     * @param current 页码
-     * @return 商铺列表
+     * 根据商铺类型分页查询商铺信息(人气,评分,距离,主要是实现距离,使用Redis的GEO数据结构)
      */
     @GetMapping("/of/type")
     public Result queryShopByType(
