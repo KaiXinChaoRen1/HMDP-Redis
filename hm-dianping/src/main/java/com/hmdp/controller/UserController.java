@@ -94,11 +94,17 @@ public class UserController {
         return Result.ok(userDTO);
     }
 
+    /**
+     * 用户签到
+     */
     @PostMapping("/sign")
     public Result sign() {
         return userService.sign();
     }
 
+    /**
+     * 统计用户签到,最近的连续签到天数
+     */
     @GetMapping("/sign/count")
     public Result signCount() {
         return userService.signCount();

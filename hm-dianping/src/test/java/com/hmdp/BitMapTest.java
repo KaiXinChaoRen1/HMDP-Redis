@@ -2,7 +2,12 @@ package com.hmdp;
 
 import org.junit.jupiter.api.Test;
 
-public class NormalTest {
+/**
+ *  将bit位与业务形成映射,这种思路称之为位图(BitMap)
+ *  Redis中使用String实现BitMap,最大上限是512M,也就是2^32个bit
+ */
+public class BitMapTest {
+
 
     @Test
     void testBitMap() {

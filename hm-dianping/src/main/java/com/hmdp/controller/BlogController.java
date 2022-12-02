@@ -32,7 +32,7 @@ public class BlogController {
     }
 
     /**
-     * 分页获取关注推送过来的blog(这个用的是获取一个范围里zset元素的方法,但是设计不合理随便看看就完了)
+     * 分页获取关注推送过来的blog(这个用的是获取一个范围里zset元素的方法,主要讲的是分页边界的问题,但是我感觉设计不合理随便看看就完了)
      */
     @GetMapping("/of/follow")
     public Result queryBlogOfFollow(
@@ -73,6 +73,9 @@ public class BlogController {
     }
 
 
+    /**
+     *  查询我的blog,用户进入'我的'页面,展示自己的blog,跟下面那个一样
+     */
     @GetMapping("/of/me")
     public Result queryMyBlog(@RequestParam(value = "current", defaultValue = "1") Integer current) {
         // 获取登录用户
@@ -87,7 +90,7 @@ public class BlogController {
 
 
     /**
-     * 查询指定用户的所有blog，用于功能关注功能进入关注者页面显示其blog，非重点
+     * 查询指定用户的所有blog，用于 关注功能 进入关注者页面显示其blog，非重点
      */
     @GetMapping("/of/user")
     public Result queryBlogByUserId(

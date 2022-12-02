@@ -24,7 +24,7 @@ import static com.hmdp.utils.RedisConstants.CACHE_SHOP_KEY;
 import static com.hmdp.utils.RedisConstants.SHOP_GEO_KEY;
 
 @SpringBootTest
-class HmDianPingApplicationTests {
+class SomeTest {
 
     @Resource
     private CacheClient cacheClient;
@@ -40,6 +40,26 @@ class HmDianPingApplicationTests {
 
     private ExecutorService es = Executors.newFixedThreadPool(500);
 
+    /**
+     * UV统计:一个人一天只统计一次,使用HyperLogLog数据机构,基于统计的原理,内存永远小于16k,数量却可以非常大,只有不到1%的误差
+     * 那么就整100w个测一测呗
+     */
+    @Test
+    void testHyperLogLog() {
+        String[] values = new String[1000];
+        int j = 0;
+        for (int i = 0; i < 1000000; i++) {
+            j = i % 1000;
+            values[j] = "user_" + i;
+            if (j == 999) {
+                // 发送到Redis
+                stringRedisTemplate.opsForHyperLogLog().add("hl2", values);
+            }
+        }
+        // 统计数量
+        Long count = stringRedisTemplate.opsForHyperLogLog().size("hl2");
+        System.out.println("count = " + count);
+    }
 
 
     /**
@@ -96,29 +116,9 @@ class HmDianPingApplicationTests {
     }
 
 
-
-
-
     @Test
     void testSaveShop() throws InterruptedException {
         Shop shop = shopService.getById(1L);
         cacheClient.setWithLogicalExpire(CACHE_SHOP_KEY + 1L, shop, 10L, TimeUnit.SECONDS);
-    }
-
-    @Test
-    void testHyperLogLog() {
-        String[] values = new String[1000];
-        int j = 0;
-        for (int i = 0; i < 1000000; i++) {
-            j = i % 1000;
-            values[j] = "user_" + i;
-            if(j == 999){
-                // 发送到Redis
-                stringRedisTemplate.opsForHyperLogLog().add("hl2", values);
-            }
-        }
-        // 统计数量
-        Long count = stringRedisTemplate.opsForHyperLogLog().size("hl2");
-        System.out.println("count = " + count);
     }
 }
